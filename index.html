@@ -329,15 +329,15 @@
         <div class="subtitle">BIP-444 Enforcement Visualization - Toggle pools to explore different scenarios</div>
 
         <div class="stats" style="margin-bottom: 20px;">
-            <h2 style="margin-bottom: 15px;">💰 Economic Impact (Per Day - 144 Blocks)</h2>
+            <h2 style="margin-bottom: 15px;">💰 Economic Impact</h2>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-title">Compliant Pools Revenue</div>
-                    <div class="stat-value positive" id="compliantRevenue">0 BTC</div>
+                    <div class="stat-title" id="compliantLabel">Compliant Pools Revenue</div>
+                    <div class="stat-value" id="compliantRevenue">0 BTC</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-title">Defector Pools Lost Revenue</div>
-                    <div class="stat-value negative" id="defectorLost">0 BTC</div>
+                    <div class="stat-title" id="defectorLabel">Defector Pools Lost Revenue</div>
+                    <div class="stat-value" id="defectorRevenue">0 BTC</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-title">Compliant Pools Hash Rate</div>
@@ -389,7 +389,7 @@
             <div class="chain-container">
                 <div class="chain-label main">
                     <span>🟢 Main Chain (BIP-444 Compliant)</span>
-                    <span style="font-size: 14px; font-weight: normal; color: #888;">Longest valid chain accepted by compliant nodes</span>
+                    <span style="font-size: 14px; font-weight: normal; color: #888;" id="mainChainStatus">Accepted by exchanges, nodes, and economic majority</span>
                 </div>
                 <div class="chain-blocks" id="mainChain"></div>
             </div>
@@ -397,7 +397,7 @@
             <div class="chain-container">
                 <div class="chain-label defector">
                     <span>🔴 Defector Chain (Non-Compliant)</span>
-                    <span style="font-size: 14px; font-weight: normal; color: #888;">Blocks rejected by BIP-444 nodes</span>
+                    <span style="font-size: 14px; font-weight: normal; color: #888;" id="defectorChainStatus">Rejected by BIP-444 nodes - May trade as fork coin</span>
                 </div>
                 <div class="chain-blocks" id="defectorChain"></div>
             </div>
@@ -508,23 +508,40 @@
 
         function mineBlock() {
             const miner = selectMiner();
-            const block = {
-                height: simulation.height++,
-                miner: miner.name,
-                compliant: miner.compliant,
-                orphaned: false
-            };
 
-            if (block.compliant) {
-                // Compliant block goes to main chain
+            if (miner.compliant) {
+                // Compliant miner adds to main chain
+                const block = {
+                    height: simulation.mainChain.length,
+                    miner: miner.name,
+                    compliant: true,
+                    chainId: 'main'
+                };
                 simulation.mainChain.push(block);
                 simulation.stats.compliantBlocks++;
             } else {
-                // Non-compliant block is rejected by main chain
-                block.orphaned = true;
+                // Defector miner adds to defector chain
+                const block = {
+                    height: simulation.defectorChain.length,
+                    miner: miner.name,
+                    compliant: false,
+                    chainId: 'defector'
+                };
                 simulation.defectorChain.push(block);
-                simulation.stats.orphanedBlocks++;
                 simulation.stats.defectorBlocks++;
+            }
+
+            // Check for orphaned blocks - if one chain gets 6+ blocks ahead, orphan the losing chain
+            const heightDiff = simulation.mainChain.length - simulation.defectorChain.length;
+            if (Math.abs(heightDiff) >= 6) {
+                if (heightDiff > 0) {
+                    // Main chain wins, defector blocks become orphaned
+                    simulation.stats.orphanedBlocks = simulation.defectorChain.length;
+                } else {
+                    // This shouldn't happen in BIP-444 scenario as exchanges/nodes reject non-compliant
+                    // But we track it for completeness
+                    simulation.stats.orphanedBlocks = 0;
+                }
             }
 
             renderChains();
@@ -544,13 +561,16 @@
                 </div>
             `).join('');
 
-            // Render defector chain (orphaned blocks)
+            // Render defector chain
             const defectorBlocks = simulation.defectorChain.slice(-20);
+            const heightDiff = simulation.mainChain.length - simulation.defectorChain.length;
+            const isOrphaned = heightDiff >= 6;
+
             defectorChainEl.innerHTML = defectorBlocks.map(block => `
-                <div class="block orphaned">
+                <div class="block ${isOrphaned ? 'orphaned' : 'invalid'}">
                     <div class="block-height">#${block.height}</div>
                     <div class="block-miner">${block.miner.split(' ')[0]}</div>
-                    <div style="font-size: 10px;">ORPHAN</div>
+                    ${isOrphaned ? '<div style="font-size: 10px;">ORPHAN</div>' : ''}
                 </div>
             `).join('');
         }
@@ -562,19 +582,126 @@
             document.getElementById('compliantHashRate').textContent = `${compliantHash.toFixed(1)}%`;
             document.getElementById('defectorHashRate').textContent = `${defectorHash.toFixed(1)}%`;
 
-            // Revenue calculations (based on 144 blocks per day)
-            const compliantRevenue = (simulation.stats.compliantBlocks / (simulation.mainChain.length + simulation.defectorChain.length || 1)) * 144 * BLOCK_REWARD;
-            const defectorLost = simulation.stats.orphanedBlocks * BLOCK_REWARD;
+            // Economic model: Hash power majority determines which chain is Bitcoin
+            // The longest chain (most cumulative work) wins
+            // Minority chain gets orphaned = total loss for minority miners
 
-            document.getElementById('compliantRevenue').textContent =
-                `${compliantRevenue.toFixed(2)} BTC (~$${(compliantRevenue * 90000).toLocaleString()})`;
-            document.getElementById('defectorLost').textContent =
-                `${defectorLost.toFixed(2)} BTC (~$${(defectorLost * 90000).toLocaleString()})`;
+            const heightDiff = simulation.mainChain.length - simulation.defectorChain.length;
+
+            // Determine winner based on hash power majority
+            let compliantChainValue, defectorChainValue;
+            let winnerChain, loserChain;
+
+            if (compliantHash === 0) {
+                // 100% defectors = no split, defectors ARE Bitcoin
+                compliantChainValue = 0;
+                defectorChainValue = 1.0;
+                winnerChain = 'defector';
+                loserChain = 'none';
+            } else if (defectorHash === 0) {
+                // 100% compliant = no split, compliant chain IS Bitcoin
+                compliantChainValue = 1.0;
+                defectorChainValue = 0;
+                winnerChain = 'compliant';
+                loserChain = 'none';
+            } else if (compliantHash > defectorHash) {
+                // Compliant majority: their chain grows faster, becomes longest chain
+                // Defector blocks get orphaned when compliant chain overtakes
+                compliantChainValue = 1.0;
+                defectorChainValue = 0; // Minority chain gets orphaned = total loss
+                winnerChain = 'compliant';
+                loserChain = 'defector';
+            } else {
+                // Defector majority: their chain grows faster, becomes longest chain
+                // Compliant blocks get orphaned when defector chain overtakes
+                compliantChainValue = 0; // Minority chain gets orphaned = total loss
+                defectorChainValue = 1.0;
+                winnerChain = 'defector';
+                loserChain = 'compliant';
+            }
+
+            // Calculate revenue: Winner gets full value, loser gets nothing
+            const compliantRevenue = simulation.mainChain.length * BLOCK_REWARD * compliantChainValue;
+            const defectorRevenue = simulation.defectorChain.length * BLOCK_REWARD * defectorChainValue;
+
+            // Lost revenue = what minority wasted mining orphaned blocks
+            const compliantLost = simulation.mainChain.length * BLOCK_REWARD * (1 - compliantChainValue);
+            const defectorLost = simulation.defectorChain.length * BLOCK_REWARD * (1 - defectorChainValue);
+
+            // Update labels and values symmetrically
+            const compliantTotal = simulation.mainChain.length * BLOCK_REWARD;
+            const defectorTotal = simulation.defectorChain.length * BLOCK_REWARD;
+
+            // Compliant side
+            const compliantValueEl = document.getElementById('compliantRevenue');
+            const compliantLabelEl = document.getElementById('compliantLabel');
+
+            if (compliantHash === 0) {
+                compliantLabelEl.textContent = 'Compliant Pools';
+                compliantValueEl.textContent = '0 BTC - No compliant miners';
+                compliantValueEl.className = 'stat-value';
+            } else if (compliantChainValue > 0) {
+                // Winning side
+                compliantLabelEl.textContent = 'Compliant Pools Revenue (Majority Wins)';
+                compliantValueEl.textContent = `${compliantRevenue.toFixed(2)} BTC (~$${(compliantRevenue * 90000).toLocaleString()})`;
+                compliantValueEl.className = 'stat-value positive';
+            } else {
+                // Losing side
+                compliantLabelEl.textContent = 'Compliant Pools Lost Revenue (Minority)';
+                compliantValueEl.textContent = `${compliantTotal.toFixed(2)} BTC (~$${(compliantTotal * 90000).toLocaleString()}) wasted`;
+                compliantValueEl.className = 'stat-value negative';
+            }
+
+            // Defector side
+            const defectorValueEl = document.getElementById('defectorRevenue');
+            const defectorLabelEl = document.getElementById('defectorLabel');
+
+            if (defectorHash === 0) {
+                defectorLabelEl.textContent = 'Defector Pools';
+                defectorValueEl.textContent = '0 BTC - No defector miners';
+                defectorValueEl.className = 'stat-value';
+            } else if (defectorChainValue > 0) {
+                // Winning side
+                defectorLabelEl.textContent = 'Defector Pools Revenue (Majority Wins)';
+                defectorValueEl.textContent = `${defectorRevenue.toFixed(2)} BTC (~$${(defectorRevenue * 90000).toLocaleString()})`;
+                defectorValueEl.className = 'stat-value positive';
+            } else {
+                // Losing side
+                defectorLabelEl.textContent = 'Defector Pools Lost Revenue (Minority)';
+                defectorValueEl.textContent = `${defectorTotal.toFixed(2)} BTC (~$${(defectorTotal * 90000).toLocaleString()}) wasted`;
+                defectorValueEl.className = 'stat-value negative';
+            }
 
             document.getElementById('mainHeight').textContent = simulation.mainChain.length;
             document.getElementById('orphanedCount').textContent = simulation.stats.orphanedBlocks;
             document.getElementById('validBlocks').textContent = simulation.stats.compliantBlocks;
             document.getElementById('invalidBlocks').textContent = simulation.stats.defectorBlocks;
+
+            // Update chain status messages based on hash power
+            if (compliantHash === 0) {
+                document.getElementById('mainChainStatus').textContent =
+                    `✗ No compliant miners - Chain does not exist`;
+                document.getElementById('defectorChainStatus').textContent =
+                    `✓ Defectors control 100% - This IS Bitcoin (longest chain)`;
+            } else if (defectorHash === 0) {
+                document.getElementById('mainChainStatus').textContent =
+                    `✓ All miners compliant - This IS Bitcoin (longest chain)`;
+                document.getElementById('defectorChainStatus').textContent =
+                    `✗ No defector miners - Chain does not exist`;
+            } else if (compliantHash > defectorHash) {
+                const diff = Math.abs(heightDiff);
+                document.getElementById('mainChainStatus').textContent =
+                    `✓ Majority hash (${compliantHash.toFixed(1)}%) - Longest chain wins (${diff} block ${heightDiff > 0 ? 'lead' : 'deficit'})`;
+                document.getElementById('defectorChainStatus').textContent =
+                    `✗ Minority hash (${defectorHash.toFixed(1)}%) - Chain will be orphaned`;
+            } else {
+                // Defector majority
+                const diff = Math.abs(heightDiff);
+                document.getElementById('mainChainStatus').textContent =
+                    `✗ Minority hash (${compliantHash.toFixed(1)}%) - Chain will be orphaned`;
+                document.getElementById('defectorChainStatus').textContent =
+                    `✓ Majority hash (${defectorHash.toFixed(1)}%) - Longest chain wins (${diff} block ${heightDiff > 0 ? 'deficit' : 'lead'})`;
+            }
         }
 
         function startSimulation() {
