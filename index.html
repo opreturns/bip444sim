@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Fork Scenario Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f0f0f;
+            color: #f0f0f0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #f7931a;
+        }
+
+        .subtitle {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #888;
+            font-size: 14px;
+        }
+
+        .controls {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .pool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .pool-card {
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            border: 2px solid #333;
+        }
+
+        .pool-card.compliant {
+            border-color: #4caf50;
+        }
+
+        .pool-card.defector {
+            border-color: #f44336;
+        }
+
+        .pool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .pool-name {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .pool-hashrate {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .toggle-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn.compliant {
+            background: #4caf50;
+            color: white;
+        }
+
+        .toggle-btn.defector {
+            background: #f44336;
+            color: white;
+        }
+
+        .simulation-area {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .chain-container {
+            margin-bottom: 30px;
+        }
+
+        .chain-label {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chain-label.main {
+            color: #4caf50;
+        }
+
+        .chain-label.defector {
+            color: #f44336;
+        }
+
+        .chain-blocks {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .block {
+            min-width: 60px;
+            height: 60px;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            position: relative;
+            animation: blockAppear 0.5s ease-out;
+        }
+
+        @keyframes blockAppear {
+            from {
+                transform: scale(0);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .block.valid {
+            background: linear-gradient(135deg, #4caf50, #45a049);
+            border: 2px solid #66bb6a;
+        }
+
+        .block.invalid {
+            background: linear-gradient(135deg, #f44336, #e53935);
+            border: 2px solid #ef5350;
+        }
+
+        .block.orphaned {
+            background: linear-gradient(135deg, #ff9800, #fb8c00);
+            border: 2px solid #ffa726;
+            opacity: 0.6;
+        }
+
+        .block-height {
+            font-weight: bold;
+        }
+
+        .block-miner {
+            font-size: 9px;
+            opacity: 0.8;
+        }
+
+        .stats {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        .stat-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .stat-value.positive {
+            color: #4caf50;
+        }
+
+        .stat-value.negative {
+            color: #f44336;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            background: #f7931a;
+            color: white;
+        }
+
+        .btn:hover {
+            background: #e68a17;
+        }
+
+        .btn.secondary {
+            background: #555;
+        }
+
+        .btn.secondary:hover {
+            background: #666;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend {
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⛏️ Bitcoin Fork Scenario Simulator</h1>
+        <div class="subtitle">BIP-444 Enforcement Visualization - Toggle pools to explore different scenarios</div>
+
+        <div class="stats" style="margin-bottom: 20px;">
+            <h2 style="margin-bottom: 15px;">💰 Economic Impact (Per Day - 144 Blocks)</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-title">Compliant Pools Revenue</div>
+                    <div class="stat-value positive" id="compliantRevenue">0 BTC</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Defector Pools Lost Revenue</div>
+                    <div class="stat-value negative" id="defectorLost">0 BTC</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Compliant Pools Hash Rate</div>
+                    <div class="stat-value positive" id="compliantHashRate">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Defector Pools Hash Rate</div>
+                    <div class="stat-value negative" id="defectorHashRate">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h2 style="margin-bottom: 15px;">Mining Pool Configuration</h2>
+            <div class="pool-grid" id="poolGrid"></div>
+
+            <div class="controls-row">
+                <button class="btn" onclick="startSimulation()">▶ Start Simulation</button>
+                <button class="btn secondary" onclick="stopSimulation()">⏸ Pause</button>
+                <button class="btn secondary" onclick="resetSimulation()">↻ Reset</button>
+                <div class="speed-control">
+                    <label>Speed:</label>
+                    <input type="range" min="500" max="3000" value="1500" step="100" id="speedSlider"
+                           oninput="updateSpeed(this.value)">
+                    <span id="speedLabel">1.5s</span>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="legend-title">Legend</div>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: linear-gradient(135deg, #4caf50, #45a049);"></div>
+                        <span>Valid Block (BIP-444 Compliant)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: linear-gradient(135deg, #f44336, #e53935);"></div>
+                        <span>Invalid Block (Non-Compliant)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: linear-gradient(135deg, #ff9800, #fb8c00); opacity: 0.6;"></div>
+                        <span>Orphaned Block</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="simulation-area">
+            <div class="chain-container">
+                <div class="chain-label main">
+                    <span>🟢 Main Chain (BIP-444 Compliant)</span>
+                    <span style="font-size: 14px; font-weight: normal; color: #888;">Longest valid chain accepted by compliant nodes</span>
+                </div>
+                <div class="chain-blocks" id="mainChain"></div>
+            </div>
+
+            <div class="chain-container">
+                <div class="chain-label defector">
+                    <span>🔴 Defector Chain (Non-Compliant)</span>
+                    <span style="font-size: 14px; font-weight: normal; color: #888;">Blocks rejected by BIP-444 nodes</span>
+                </div>
+                <div class="chain-blocks" id="defectorChain"></div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <h2 style="margin-bottom: 15px;">📊 Simulation Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-title">Main Chain Height</div>
+                    <div class="stat-value" id="mainHeight">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Orphaned Blocks</div>
+                    <div class="stat-value" id="orphanedCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Valid Blocks Mined</div>
+                    <div class="stat-value positive" id="validBlocks">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Invalid Blocks Rejected</div>
+                    <div class="stat-value negative" id="invalidBlocks">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mining pool data with realistic hash rate distribution
+        const pools = [
+            { name: 'Foundry USA', hashrate: 28.5, compliant: true },
+            { name: 'AntPool', hashrate: 18.2, compliant: true },
+            { name: 'F2Pool', hashrate: 13.8, compliant: false },
+            { name: 'Luxor', hashrate: 8.5, compliant: false },
+            { name: 'ViaBTC', hashrate: 9.3, compliant: true },
+            { name: 'Binance Pool', hashrate: 7.1, compliant: true },
+            { name: 'MARA Pool', hashrate: 6.4, compliant: true },
+            { name: 'Braiins Pool', hashrate: 4.8, compliant: true },
+            { name: 'Other Pools', hashrate: 3.4, compliant: true }
+        ];
+
+        let simulation = {
+            running: false,
+            interval: null,
+            speed: 1500,
+            mainChain: [],
+            defectorChain: [],
+            height: 0,
+            stats: {
+                compliantBlocks: 0,
+                defectorBlocks: 0,
+                orphanedBlocks: 0
+            }
+        };
+
+        const BLOCK_REWARD = 3.125; // Current BTC block reward
+
+        // Initialize pool grid
+        function initializePools() {
+            const grid = document.getElementById('poolGrid');
+            grid.innerHTML = '';
+
+            pools.forEach((pool, index) => {
+                const card = document.createElement('div');
+                card.className = `pool-card ${pool.compliant ? 'compliant' : 'defector'}`;
+                card.innerHTML = `
+                    <div class="pool-header">
+                        <div class="pool-name">${pool.name}</div>
+                    </div>
+                    <div class="pool-hashrate">${pool.hashrate}% hashrate</div>
+                    <button class="toggle-btn ${pool.compliant ? 'compliant' : 'defector'}"
+                            onclick="togglePool(${index})">
+                        ${pool.compliant ? '✓ Compliant' : '✗ Defector'}
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+
+            updateStats();
+        }
+
+        function togglePool(index) {
+            pools[index].compliant = !pools[index].compliant;
+            initializePools();
+        }
+
+        function getCompliantHashRate() {
+            return pools.filter(p => p.compliant).reduce((sum, p) => sum + p.hashrate, 0);
+        }
+
+        function getDefectorHashRate() {
+            return pools.filter(p => !p.compliant).reduce((sum, p) => sum + p.hashrate, 0);
+        }
+
+        function selectMiner() {
+            const rand = Math.random() * 100;
+            let cumulative = 0;
+
+            for (let pool of pools) {
+                cumulative += pool.hashrate;
+                if (rand <= cumulative) {
+                    return pool;
+                }
+            }
+            return pools[0];
+        }
+
+        function mineBlock() {
+            const miner = selectMiner();
+            const block = {
+                height: simulation.height++,
+                miner: miner.name,
+                compliant: miner.compliant,
+                orphaned: false
+            };
+
+            if (block.compliant) {
+                // Compliant block goes to main chain
+                simulation.mainChain.push(block);
+                simulation.stats.compliantBlocks++;
+            } else {
+                // Non-compliant block is rejected by main chain
+                block.orphaned = true;
+                simulation.defectorChain.push(block);
+                simulation.stats.orphanedBlocks++;
+                simulation.stats.defectorBlocks++;
+            }
+
+            renderChains();
+            updateStats();
+        }
+
+        function renderChains() {
+            const mainChainEl = document.getElementById('mainChain');
+            const defectorChainEl = document.getElementById('defectorChain');
+
+            // Render main chain (show last 20 blocks)
+            const mainBlocks = simulation.mainChain.slice(-20);
+            mainChainEl.innerHTML = mainBlocks.map(block => `
+                <div class="block valid">
+                    <div class="block-height">#${block.height}</div>
+                    <div class="block-miner">${block.miner.split(' ')[0]}</div>
+                </div>
+            `).join('');
+
+            // Render defector chain (orphaned blocks)
+            const defectorBlocks = simulation.defectorChain.slice(-20);
+            defectorChainEl.innerHTML = defectorBlocks.map(block => `
+                <div class="block orphaned">
+                    <div class="block-height">#${block.height}</div>
+                    <div class="block-miner">${block.miner.split(' ')[0]}</div>
+                    <div style="font-size: 10px;">ORPHAN</div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            const compliantHash = getCompliantHashRate();
+            const defectorHash = getDefectorHashRate();
+
+            document.getElementById('compliantHashRate').textContent = `${compliantHash.toFixed(1)}%`;
+            document.getElementById('defectorHashRate').textContent = `${defectorHash.toFixed(1)}%`;
+
+            // Revenue calculations (based on 144 blocks per day)
+            const compliantRevenue = (simulation.stats.compliantBlocks / (simulation.mainChain.length + simulation.defectorChain.length || 1)) * 144 * BLOCK_REWARD;
+            const defectorLost = simulation.stats.orphanedBlocks * BLOCK_REWARD;
+
+            document.getElementById('compliantRevenue').textContent =
+                `${compliantRevenue.toFixed(2)} BTC (~$${(compliantRevenue * 90000).toLocaleString()})`;
+            document.getElementById('defectorLost').textContent =
+                `${defectorLost.toFixed(2)} BTC (~$${(defectorLost * 90000).toLocaleString()})`;
+
+            document.getElementById('mainHeight').textContent = simulation.mainChain.length;
+            document.getElementById('orphanedCount').textContent = simulation.stats.orphanedBlocks;
+            document.getElementById('validBlocks').textContent = simulation.stats.compliantBlocks;
+            document.getElementById('invalidBlocks').textContent = simulation.stats.defectorBlocks;
+        }
+
+        function startSimulation() {
+            if (simulation.running) return;
+            simulation.running = true;
+            simulation.interval = setInterval(mineBlock, simulation.speed);
+        }
+
+        function stopSimulation() {
+            simulation.running = false;
+            if (simulation.interval) {
+                clearInterval(simulation.interval);
+            }
+        }
+
+        function resetSimulation() {
+            stopSimulation();
+            simulation.mainChain = [];
+            simulation.defectorChain = [];
+            simulation.height = 0;
+            simulation.stats = {
+                compliantBlocks: 0,
+                defectorBlocks: 0,
+                orphanedBlocks: 0
+            };
+            renderChains();
+            updateStats();
+        }
+
+        function updateSpeed(value) {
+            simulation.speed = parseInt(value);
+            document.getElementById('speedLabel').textContent = `${(value / 1000).toFixed(1)}s`;
+            if (simulation.running) {
+                stopSimulation();
+                startSimulation();
+            }
+        }
+
+        // Initialize on load
+        initializePools();
+        startSimulation();
+    </script>
+</body>
+</html>
